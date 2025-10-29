@@ -42,3 +42,4 @@ GET `/api/categories/{categoryId}`
 
 Funciona bien
 
+ci: trigger develop Wed Oct 29 11:04:09 -05 2025
