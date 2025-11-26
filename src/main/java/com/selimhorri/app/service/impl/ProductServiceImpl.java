@@ -19,6 +19,9 @@ import com.selimhorri.app.service.ProductService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.togglz.core.Feature;
+import org.togglz.core.manager.FeatureManager;
+import org.togglz.core.util.NamedFeature;
 
 @Service
 @Transactional
@@ -26,26 +29,40 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
 
-	private final ProductRepository productRepository;
+    private final FeatureManager manager;
+    public static final Feature DISCOUNT_APPLIED = new NamedFeature("DISCOUNT_APPLIED");
+
+    private final ProductRepository productRepository;
 	private final CategoryRepository categoryRepository;
 
 	@Override
 	public List<ProductDto> findAll() {
 		log.info("*** ProductDto List, service; fetch all products *");
-		return this.productRepository.findAllWithoutDeleted()
-				.stream()
-				.map(ProductMappingHelper::map)
-				.distinct()
-				.collect(Collectors.toUnmodifiableList());
+        List<Product> products = this.productRepository.findAllWithoutDeleted();
+
+        if (manager.isActive(DISCOUNT_APPLIED)) {
+            products = applyDiscount(products);
+        }
+
+        return products.stream()
+            .map(ProductMappingHelper::map)
+            .distinct()
+            .collect(Collectors.toUnmodifiableList());
 	}
 
 	@Override
 	public ProductDto findById(final Integer productId) {
 		log.info("*** ProductDto, service; fetch product by id *");
-		return this.productRepository.findByIdWithoutDeleted(productId)
-				.map(ProductMappingHelper::map)
-				.orElseThrow(
-						() -> new ProductNotFoundException(String.format("Product with id: %d not found", productId)));
+        Product product = this.productRepository.findByIdWithoutDeleted(productId)
+            .orElseThrow(() -> new ProductNotFoundException(
+                        String.format("Product with id: %d not found", productId)
+            ));
+
+        Product processed = manager.isActive(DISCOUNT_APPLIED)
+                ? applyDiscount(product)
+                : product;
+
+		return ProductMappingHelper.map(processed);
 	}
 
 	@Override
@@ -130,5 +147,38 @@ public class ProductServiceImpl implements ProductService {
 		// 3. Actualizar la categoría del producto a "Deleted" (soft delete)
 		product.setCategory(deletedCategory);
 		this.productRepository.save(product);
+	}
+    
+	private Product applyDiscount(Product product) {
+		if (product == null) {
+			return null;
+		}
+
+		Double price = product.getPriceUnit();
+		if (price == null) {
+			return product;
+		}
+
+		Double discounted = price * 0.8d;
+
+		return Product.builder()
+				.productId(product.getProductId())
+				.productTitle(product.getProductTitle())
+				.imageUrl(product.getImageUrl())
+				.sku(product.getSku())
+				.priceUnit(discounted)
+				.quantity(product.getQuantity())
+				.category(product.getCategory())
+				.build();
+	}
+
+	private List<Product> applyDiscount(List<Product> products) {
+		if (products == null) {
+			return null;
+		}
+
+		return products.stream()
+				.map(this::applyDiscount)
+				.collect(Collectors.toUnmodifiableList());
 	}
 }
