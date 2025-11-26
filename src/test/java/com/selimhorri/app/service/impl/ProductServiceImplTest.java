@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,6 +22,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.togglz.core.Feature;
+import org.togglz.core.manager.FeatureManager;
 
 import com.selimhorri.app.domain.Category;
 import com.selimhorri.app.domain.Product;
@@ -40,6 +43,9 @@ class ProductServiceImplTest {
 
 	@Mock
 	private CategoryRepository categoryRepository;
+
+	@Mock
+	private FeatureManager featureManager;
 
 	@InjectMocks
 	private ProductServiceImpl productService;
@@ -82,6 +88,9 @@ class ProductServiceImplTest {
 				.quantity(10)
 				.categoryDto(categoryDto)
 				.build();
+
+		// Mock FeatureManager to return false for isActive() by default
+		lenient().when(featureManager.isActive(any(Feature.class))).thenReturn(false);
 	}
 
 	@Test
@@ -111,6 +120,66 @@ class ProductServiceImplTest {
 	}
 
 	@Test
+	@DisplayName("Should not apply discount when feature is disabled in findAll")
+	void testFindAll_DiscountFeatureDisabled() {
+		// Given
+		when(featureManager.isActive(any(Feature.class))).thenReturn(false);
+
+		Product product2 = Product.builder()
+				.productId(2)
+				.productTitle("Phone")
+				.imageUrl("https://example.com/phone.jpg")
+				.sku("PHN-001")
+				.priceUnit(500.00)
+				.quantity(5)
+				.category(category)
+				.build();
+
+		List<Product> products = Arrays.asList(product, product2);
+		when(productRepository.findAllWithoutDeleted()).thenReturn(products);
+
+		// When
+		List<ProductDto> result = productService.findAll();
+
+		// Then
+		assertNotNull(result);
+		assertEquals(2, result.size());
+		assertEquals(999.99, result.get(0).getPriceUnit());
+		assertEquals(500.00, result.get(1).getPriceUnit());
+		verify(featureManager, times(1)).isActive(any(Feature.class));
+	}
+
+	@Test
+	@DisplayName("Should apply discount when feature is enabled in findAll")
+	void testFindAll_DiscountFeatureEnabled() {
+		// Given
+		when(featureManager.isActive(any(Feature.class))).thenReturn(true);
+
+		Product product2 = Product.builder()
+				.productId(2)
+				.productTitle("Phone")
+				.imageUrl("https://example.com/phone.jpg")
+				.sku("PHN-001")
+				.priceUnit(500.00)
+				.quantity(5)
+				.category(category)
+				.build();
+
+		List<Product> products = Arrays.asList(product, product2);
+		when(productRepository.findAllWithoutDeleted()).thenReturn(products);
+
+		// When
+		List<ProductDto> result = productService.findAll();
+
+		// Then
+		assertNotNull(result);
+		assertEquals(2, result.size());
+		assertEquals(999.99 * 0.8, result.get(0).getPriceUnit());
+		assertEquals(500.00 * 0.8, result.get(1).getPriceUnit());
+		verify(featureManager, times(1)).isActive(any(Feature.class));
+	}
+
+	@Test
 	@DisplayName("Should find product by id successfully")
 	void testFindById_Success() {
 		// Given
@@ -124,6 +193,25 @@ class ProductServiceImplTest {
 		assertEquals(1, result.getProductId());
 		assertEquals("Laptop", result.getProductTitle());
 		assertEquals("LAP-001", result.getSku());
+		assertEquals(999.99, result.getPriceUnit());
+		verify(productRepository, times(1)).findByIdWithoutDeleted(1);
+	}
+
+	@Test
+	@DisplayName("Should apply discount when feature is enabled in findById")
+	void testFindById_DiscountFeatureEnabled() {
+		// Given
+		when(featureManager.isActive(any(Feature.class))).thenReturn(true);
+		when(productRepository.findByIdWithoutDeleted(1)).thenReturn(Optional.of(product));
+
+		// When
+		ProductDto result = productService.findById(1);
+
+		// Then
+		assertNotNull(result);
+		assertEquals(1, result.getProductId());
+		assertEquals(999.99 * 0.8, result.getPriceUnit());
+		verify(featureManager, times(1)).isActive(any(Feature.class));
 		verify(productRepository, times(1)).findByIdWithoutDeleted(1);
 	}
 
@@ -542,4 +630,5 @@ class ProductServiceImplTest {
 	}
 
 }
+
 

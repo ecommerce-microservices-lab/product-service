@@ -35,11 +35,12 @@ management:
   endpoint:
     health:
       show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: 'togglz'
 
-
-
-
-
-
-
-
+togglz:
+  features:
+    DISCOUNT_APPLIED:
+      enabled: false
