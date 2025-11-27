@@ -43,6 +43,8 @@ management:
   endpoint:
     health:
       show-details: always
+    togglz:
+      enabled: true
 
 togglz:
   features:
